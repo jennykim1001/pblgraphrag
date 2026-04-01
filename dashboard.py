@@ -72,7 +72,13 @@ def load_data_from_uploads(uploaded_files):
     frames = []
     for file in uploaded_files:
         df = pd.read_excel(file)
-        fname = file.name.replace(".xlsx", "").replace("class", "")
+        # ClassA.xlsx → A, classB.xlsx → B
+        fname = file.name.replace(".xlsx", "")
+        # "Class" 또는 "class" 접두어 제거
+        for prefix in ["Class", "class", "CLASS"]:
+            if fname.startswith(prefix):
+                fname = fname[len(prefix):]
+                break
         df["class_id"] = fname
         df["student_id"] = fname + "_" + df["이름"].astype(str)
         frames.append(df)
