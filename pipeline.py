@@ -509,7 +509,7 @@ def step2_merge_entities(extractions: dict, skip_merge: bool = False) -> dict:
             pass
 
     # ══════════════════════════════════════
-    # 2b: 엔티티 병합 (반별 LLM 호출)
+    # 2b: 엔티티 병합 (반별 LLM 호출 — 청크 단위)
     # ══════════════════════════════════════
     print(f"\n  [2b] 엔티티 병합...")
     try:
@@ -529,84 +529,120 @@ def step2_merge_entities(extractions: dict, skip_merge: bool = False) -> dict:
         class_id = ent["student_id"].split("_")[0]
         class_entities[class_id].append((i, ent))
 
+    CHUNK_SIZE = 50  # LLM 응답 안정성을 위해 50개씩 처리
+
     for class_id in sorted(class_entities.keys()):
         ents = class_entities[class_id]
         print(f"\n    반 {class_id}: {len(ents)}개 엔티티 병합 중...")
 
-        entity_lines = []
-        for idx, (global_idx, ent) in enumerate(ents):
-            entity_lines.append(f"[{idx}] type=\"{ent['type']}\" text=\"{ent['text']}\"")
+        # 청크 분할
+        chunks = [ents[i:i+CHUNK_SIZE] for i in range(0, len(ents), CHUNK_SIZE)]
+        print(f"      → {len(chunks)}개 청크로 분할 (각 {CHUNK_SIZE}개)")
 
-        user_prompt = MERGE_USER_PROMPT_TEMPLATE.format(
-            n_entities=len(ents), entity_list="\n".join(entity_lines))
+        class_grouped_indices = set()
 
-        try:
-            response = client.messages.create(
-                model=LLM_MODEL, max_tokens=4000, temperature=LLM_TEMPERATURE,
-                system=MERGE_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_prompt}]
-            )
-            raw_text = response.content[0].text.strip()
-            raw_text = re.sub(r"^```json\s*", "", raw_text)
-            raw_text = re.sub(r"\s*```$", "", raw_text)
-            merge_result = json.loads(raw_text)
+        for chunk_idx, chunk in enumerate(chunks):
+            entity_lines = []
+            for idx, (global_idx, ent) in enumerate(chunk):
+                entity_lines.append(f"[{idx}] type=\"{ent['type']}\" text=\"{ent['text']}\"")
 
-            groups = merge_result.get("groups", [])
-            grouped_indices = set()
+            user_prompt = MERGE_USER_PROMPT_TEMPLATE.format(
+                n_entities=len(chunk), entity_list="\n".join(entity_lines))
 
-            for group in groups:
-                group_indices = group.get("entity_indices", [])
-                rep_name = group.get("representative_name", "")
-                members = []
-                for local_idx in group_indices:
-                    if 0 <= local_idx < len(ents):
-                        global_idx, ent = ents[local_idx]
-                        members.append(ent)
-                        grouped_indices.add(local_idx)
-                if not members:
-                    continue
+            # 최대 2회 재시도
+            merge_success = False
+            for attempt in range(2):
+                try:
+                    response = client.messages.create(
+                        model=LLM_MODEL, max_tokens=8000, temperature=LLM_TEMPERATURE,
+                        system=MERGE_SYSTEM_PROMPT,
+                        messages=[{"role": "user", "content": user_prompt}]
+                    )
+                    raw_text = response.content[0].text.strip()
+                    raw_text = re.sub(r"^```json\s*", "", raw_text)
+                    raw_text = re.sub(r"\s*```$", "", raw_text)
 
-                student_set = set(m["student_id"] for m in members)
-                shared_id = f"SN_{shared_id_counter}"
-                shared_id_counter += 1
-                shared_nodes[shared_id] = {
-                    "type": members[0]["type"],
-                    "text": rep_name,
-                    "students": list(student_set),
-                    "n_students": len(student_set),
-                    "all_texts": [m["text"] for m in members],
-                    "sources": list(set(m.get("source", "") for m in members)),
-                }
-                for m in members:
-                    node_map[m["key"]] = shared_id
+                    # 불완전 JSON 복구 시도
+                    try:
+                        merge_result = json.loads(raw_text)
+                    except json.JSONDecodeError:
+                        # 잘린 JSON 복구: 마지막 완전한 } 찾기
+                        last_brace = raw_text.rfind("}")
+                        if last_brace > 0:
+                            truncated = raw_text[:last_brace+1]
+                            # 닫히지 않은 배열/객체 보완
+                            open_brackets = truncated.count("[") - truncated.count("]")
+                            open_braces = truncated.count("{") - truncated.count("}")
+                            truncated += "]" * open_brackets + "}" * open_braces
+                            merge_result = json.loads(truncated)
+                        else:
+                            raise
 
-            # 미그룹 엔티티
-            for local_idx, (global_idx, ent) in enumerate(ents):
-                if local_idx not in grouped_indices:
-                    shared_id = f"SN_{shared_id_counter}"
-                    shared_id_counter += 1
-                    shared_nodes[shared_id] = {
-                        "type": ent["type"], "text": ent["text"],
-                        "students": [ent["student_id"]], "n_students": 1,
-                        "all_texts": [ent["text"]],
-                        "sources": [ent.get("source", "")],
-                    }
-                    node_map[ent["key"]] = shared_id
+                    groups = merge_result.get("groups", [])
+                    chunk_grouped = set()
 
-            print(f"      → {len(groups)}개 그룹 도출")
+                    for group in groups:
+                        group_indices = group.get("entity_indices", [])
+                        rep_name = group.get("representative_name", "")
+                        members = []
+                        for local_idx in group_indices:
+                            if 0 <= local_idx < len(chunk):
+                                global_idx, ent = chunk[local_idx]
+                                members.append(ent)
+                                chunk_grouped.add(local_idx)
+                        if not members:
+                            continue
 
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"      [오류] {e} → 1:1 매핑")
-            for local_idx, (global_idx, ent) in enumerate(ents):
-                shared_id = f"SN_{shared_id_counter}"
-                shared_id_counter += 1
-                shared_nodes[shared_id] = {
-                    "type": ent["type"], "text": ent["text"],
-                    "students": [ent["student_id"]], "n_students": 1,
-                    "all_texts": [ent["text"]],
-                    "sources": [ent.get("source", "")],
-                }
-                node_map[ent["key"]] = shared_id
+                        student_set = set(m["student_id"] for m in members)
+                        shared_id = f"SN_{shared_id_counter}"
+                        shared_id_counter += 1
+                        shared_nodes[shared_id] = {
+                            "type": members[0]["type"],
+                            "text": rep_name,
+                            "students": list(student_set),
+                            "n_students": len(student_set),
+                            "all_texts": [m["text"] for m in members],
+                            "sources": list(set(m.get("source", "") for m in members)),
+                        }
+                        for m in members:
+                            node_map[m["key"]] = shared_id
+
+                    # 미그룹 엔티티
+                    for local_idx, (global_idx, ent) in enumerate(chunk):
+                        if local_idx not in chunk_grouped:
+                            shared_id = f"SN_{shared_id_counter}"
+                            shared_id_counter += 1
+                            shared_nodes[shared_id] = {
+                                "type": ent["type"], "text": ent["text"],
+                                "students": [ent["student_id"]], "n_students": 1,
+                                "all_texts": [ent["text"]],
+                                "sources": [ent.get("source", "")],
+                            }
+                            node_map[ent["key"]] = shared_id
+
+                    print(f"      청크 {chunk_idx+1}/{len(chunks)}: {len(groups)}개 그룹 도출")
+                    merge_success = True
+                    break  # 성공하면 재시도 루프 탈출
+
+                except Exception as e:
+                    if attempt == 0:
+                        print(f"      청크 {chunk_idx+1} 시도 {attempt+1} 실패: {e} → 재시도...")
+                    else:
+                        print(f"      청크 {chunk_idx+1} 시도 {attempt+1} 실패: {e} → 1:1 매핑")
+
+            # 2회 재시도 모두 실패 시 1:1 매핑
+            if not merge_success:
+                for local_idx, (global_idx, ent) in enumerate(chunk):
+                    if ent["key"] not in node_map:
+                        shared_id = f"SN_{shared_id_counter}"
+                        shared_id_counter += 1
+                        shared_nodes[shared_id] = {
+                            "type": ent["type"], "text": ent["text"],
+                            "students": [ent["student_id"]], "n_students": 1,
+                            "all_texts": [ent["text"]],
+                            "sources": [ent.get("source", "")],
+                        }
+                        node_map[ent["key"]] = shared_id
 
     # 통계
     multi_student = sum(1 for sn in shared_nodes.values() if sn["n_students"] > 1)

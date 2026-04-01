@@ -786,45 +786,50 @@ def render_class_analysis(results):
         st.markdown(f"- ⚠️ 전이 부재 학생: {', '.join(no_transfer_names)}")
 
 def render_student_gauge(row, results):
-    """반 내 위치 게이지"""
-    structure_pct = row.get("relation_entity_ratio_pct", 0)
-    transfer_pct = row.get("cross_ratio_pct", 0)
+    """반 내 위치 게이지 (4개 핵심 지표)"""
+    rer_pct = row.get("relation_entity_ratio_pct", 0)
+    cr_pct = row.get("cross_ratio_pct", 0)
+    conn_pct = row.get("connectivity_pct", 0)
+    ccr_pct = row.get("community_cross_ratio_pct", 0)
 
     import plotly.graph_objects as go
-    gauge_cols = st.columns(2)
-    with gauge_cols[0]:
-        fig_g1 = go.Figure(go.Indicator(
-            mode="gauge+number", value=round(structure_pct, 1),
-            title={"text": "성찰 구조 백분위", "font": {"size": 16}},
-            number={"font": {"size": 36}},
-            gauge={"axis": {"range": [0, 100], "tickwidth": 1},
-                "bar": {"color": "#1A3764", "thickness": 0.3}, "bgcolor": "white",
-                "steps": [{"range": [0, 25], "color": "#FFE0E0"}, {"range": [25, 50], "color": "#FFF3E0"},
-                          {"range": [50, 75], "color": "#E8F5E9"}, {"range": [75, 100], "color": "#E3F2FD"}],
-                "threshold": {"line": {"color": "#E74C3C", "width": 2}, "thickness": 0.8, "value": 50}}))
-        fig_g1.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=10))
-        st.plotly_chart(fig_g1, use_container_width=True)
-    with gauge_cols[1]:
-        fig_g2 = go.Figure(go.Indicator(
-            mode="gauge+number", value=round(transfer_pct, 1),
-            title={"text": "전이 연결 백분위", "font": {"size": 16}},
-            number={"font": {"size": 36}},
-            gauge={"axis": {"range": [0, 100], "tickwidth": 1},
-                "bar": {"color": "#E8913A", "thickness": 0.3}, "bgcolor": "white",
-                "steps": [{"range": [0, 25], "color": "#FFE0E0"}, {"range": [25, 50], "color": "#FFF3E0"},
-                          {"range": [50, 75], "color": "#E8F5E9"}, {"range": [75, 100], "color": "#E3F2FD"}],
-                "threshold": {"line": {"color": "#E74C3C", "width": 2}, "thickness": 0.8, "value": 50}}))
-        fig_g2.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=10))
-        st.plotly_chart(fig_g2, use_container_width=True)
 
-    if structure_pct >= 50 and transfer_pct >= 50:
-        st.success("반 내 상위권. 성찰 구조와 전이 연결 모두 양호합니다.")
-    elif structure_pct >= 50:
-        st.warning("성찰 구조는 양호하나, 학습 전이 연결이 부족합니다.")
-    elif transfer_pct >= 50:
-        st.info("전이 연결은 관찰되나, 성찰 구조가 다소 느슨합니다.")
+    gauge_config = [
+        {"value": rer_pct, "title": "성찰 구조", "color": "#1A3764", "desc": "경험 요소 간 연결 밀도"},
+        {"value": cr_pct, "title": "전이 연결", "color": "#E8913A", "desc": "회고→적용 교차"},
+        {"value": conn_pct, "title": "그래프 응집", "color": "#2ECC71", "desc": "경험 요소의 연결 정도"},
+        {"value": ccr_pct, "title": "범주 통합", "color": "#9B59B6", "desc": "서로 다른 범주 간 연결"},
+    ]
+
+    gauge_cols = st.columns(4)
+    for i, cfg in enumerate(gauge_config):
+        with gauge_cols[i]:
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number", value=round(cfg["value"], 1),
+                title={"text": cfg["title"], "font": {"size": 14}},
+                number={"font": {"size": 30}},
+                gauge={"axis": {"range": [0, 100], "tickwidth": 1},
+                    "bar": {"color": cfg["color"], "thickness": 0.3}, "bgcolor": "white",
+                    "steps": [{"range": [0, 25], "color": "#FFE0E0"}, {"range": [25, 50], "color": "#FFF3E0"},
+                              {"range": [50, 75], "color": "#E8F5E9"}, {"range": [75, 100], "color": "#E3F2FD"}],
+                    "threshold": {"line": {"color": "#E74C3C", "width": 2}, "thickness": 0.8, "value": 50}}))
+            fig.update_layout(height=180, margin=dict(l=15, r=15, t=35, b=5))
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption(cfg["desc"])
+
+    # 종합 진단
+    above_50 = sum(1 for v in [rer_pct, cr_pct, conn_pct, ccr_pct] if v >= 50)
+    if above_50 == 4:
+        st.success("4개 지표 모두 상위권입니다. 성찰 구조, 전이 연결, 응집도, 범주 통합이 모두 양호합니다.")
+    elif above_50 >= 2:
+        weak = []
+        if rer_pct < 50: weak.append("성찰 구조")
+        if cr_pct < 50: weak.append("전이 연결")
+        if conn_pct < 50: weak.append("그래프 응집")
+        if ccr_pct < 50: weak.append("범주 통합")
+        st.warning(f"{', '.join(weak)} 영역의 보완이 필요합니다.")
     else:
-        st.error("성찰 구조와 전이 연결 모두 보완이 필요합니다.")
+        st.error("대부분의 지표에서 보완이 필요합니다. 성찰의 구조화와 전이 연결을 강화하는 피드백이 필요합니다.")
 
     # 진단 코멘트
     metrics = results["metrics_df"]
@@ -1413,12 +1418,16 @@ if page == "👤 개인별 보고서":
     </div>""", unsafe_allow_html=True)
 
     # 요약 카드
-    structure_pct = row.get("relation_entity_ratio_pct", 0)
-    transfer_pct = row.get("cross_ratio_pct", 0)
-    c1, c2, c3 = st.columns(3)
+    rer_pct = row.get("relation_entity_ratio_pct", 0)
+    cr_pct = row.get("cross_ratio_pct", 0)
+    conn_pct = row.get("connectivity_pct", 0)
+    ccr_pct = row.get("community_cross_ratio_pct", 0)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1: st.markdown(f'<div class="mc"><div class="v">{len(ext.get("entities",[]))} / {len(ext.get("relations",[]))}</div><div class="l">엔티티 / 관계</div></div>', unsafe_allow_html=True)
-    with c2: st.markdown(f'<div class="mc" style="border-color:#2ECC71"><div class="v">{structure_pct:.0f}%</div><div class="l">성찰 구조 백분위</div></div>', unsafe_allow_html=True)
-    with c3: st.markdown(f'<div class="mc" style="border-color:#E8913A"><div class="v">{transfer_pct:.0f}%</div><div class="l">전이 연결 백분위</div></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="mc" style="border-color:#1A3764"><div class="v">{rer_pct:.0f}%</div><div class="l">성찰 구조</div></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="mc" style="border-color:#E8913A"><div class="v">{cr_pct:.0f}%</div><div class="l">전이 연결</div></div>', unsafe_allow_html=True)
+    with c4: st.markdown(f'<div class="mc" style="border-color:#2ECC71"><div class="v">{conn_pct:.0f}%</div><div class="l">그래프 응집</div></div>', unsafe_allow_html=True)
+    with c5: st.markdown(f'<div class="mc" style="border-color:#9B59B6"><div class="v">{ccr_pct:.0f}%</div><div class="l">범주 통합</div></div>', unsafe_allow_html=True)
 
     # 탭
     tab1, tab2, tab3, tab4 = st.tabs(["📊 반 내 위치", "🕸️ 지식 그래프", "📝 학습경험 요소", "🔄 전이 분석"])
