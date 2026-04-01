@@ -10,7 +10,10 @@ from pathlib import Path
 _BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = _BASE_DIR / "data"
 OUTPUT_DIR = _BASE_DIR / "outputs"
-OUTPUT_DIR.mkdir(exist_ok=True)
+try:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+except OSError:
+    pass  # Streamlit Cloud 등 읽기 전용 환경에서는 무시
 
 CLASS_FILES = {
     "A": DATA_DIR / "ClassA.xlsx",
