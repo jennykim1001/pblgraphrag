@@ -1272,6 +1272,33 @@ df = None
 if uploaded_files: df = load_data_from_uploads(uploaded_files)
 else: df = load_data_from_disk()
 
+# data/ 파일이 없어도 outputs/에서 직접 로드 시도
+if (df is None or len(df) == 0) and use_existing:
+    step1_path = OUTPUT_DIR / "step1_extractions.json"
+    metrics_path = OUTPUT_DIR / "final_scores.csv"
+    if step1_path.exists() and metrics_path.exists():
+        import json as _json
+        with open(step1_path, "r", encoding="utf-8") as f:
+            _extractions = _json.load(f)
+        _metrics_df = pd.read_csv(metrics_path)
+        # df를 metrics에서 복원
+        df_rows = []
+        for _, row in _metrics_df.iterrows():
+            sid = row["student_id"]
+            ext = _extractions.get(sid, {})
+            ents = ext.get("entities", [])
+            rels = ext.get("relations", [])
+            # 원문은 없지만 메타 정보로 df 구성
+            df_rows.append({
+                "student_id": sid, "class_id": row["class_id"], "major": row["major"],
+                "epilogue": " ".join(e.get("text","") for e in ents if e.get("source","").startswith("에필로그")),
+                "application": " ".join(e.get("text","") for e in ents if e.get("source","").startswith("활용")),
+                "epi_len": row.get("epi_len", 0), "app_len": row.get("app_len", 0),
+                "total_len": row.get("total_len", 0),
+            })
+        df = pd.DataFrame(df_rows)
+        st.sidebar.success(f"✅ 기존 결과에서 {len(df)}명 로드")
+
 if df is None or len(df) == 0:
     st.markdown("""<div style="background:linear-gradient(135deg,#1F4E79,#2E75B6);padding:30px 28px;border-radius:14px;margin-bottom:16px">
         <h2 style="color:white;margin:0">📊 PBL 학습경험 동적 평가 프레임워크</h2>
