@@ -106,25 +106,89 @@ def load_data_from_disk():
     return result
 
 def run_pipeline(df, use_existing_extractions=True):
-    from pipeline import (step1_llm_extract, step1_load_existing, step2_merge_entities, step3_build_graph, step4_compute_metrics, step5_position_and_report)
-    progress = st.progress(0, text="파이프라인 시작...")
-    progress.progress(10, text="1단계: LLM 추출...")
-    if use_existing_extractions:
-        existing = step1_load_existing()
-        if existing and len(existing) >= len(df): extractions = existing
-        else: extractions = step1_llm_extract(df)
-    else: extractions = step1_llm_extract(df)
-    progress.progress(30, text="2단계: 통합적 엔티티 해상도...")
-    merge_result = step2_merge_entities(extractions)
-    extractions = merge_result["extractions"]
-    progress.progress(50, text="3단계: 그래프 + 커뮤니티 탐지...")
-    graph_results = step3_build_graph(df, extractions, merge_result)
-    progress.progress(70, text="4단계: 구조적 지표 산출...")
-    metrics_df = step4_compute_metrics(df, extractions, graph_results)
-    progress.progress(90, text="5단계: 보고서 생성...")
-    final_df = step5_position_and_report(df, metrics_df, extractions, graph_results)
+    """outputs 폴더의 기존 결과에서 직접 로드 (pipeline.py import 불필요)"""
+    import json as _json
+    import networkx as nx
+
+    progress = st.progress(0, text="기존 결과 로드 중...")
+
+    # step1: extractions 로드
+    step1_path = OUTPUT_DIR / "step1_extractions.json"
+    if not step1_path.exists():
+        st.error("outputs/step1_extractions.json이 없습니다. 로컬에서 pipeline.py를 먼저 실행하세요.")
+        st.stop()
+    with open(step1_path, "r", encoding="utf-8") as f:
+        extractions = _json.load(f)
+    progress.progress(20, text="추출 결과 로드 완료...")
+
+    # step4: metrics 로드
+    metrics_path = OUTPUT_DIR / "final_scores.csv"
+    if not metrics_path.exists():
+        metrics_path = OUTPUT_DIR / "step4_metrics.csv"
+    metrics_df = pd.read_csv(metrics_path)
+    progress.progress(40, text="지표 로드 완료...")
+
+    # 백분위 컬럼이 없으면 산출
+    ratio_cols = ["relation_entity_ratio", "cross_ratio", "connectivity", "coverage", "community_cross_ratio"]
+    for col in ratio_cols:
+        pct_col = f"{col}_pct"
+        if pct_col not in metrics_df.columns and col in metrics_df.columns:
+            metrics_df[pct_col] = 0.0
+            for class_id in metrics_df["class_id"].unique():
+                mask = metrics_df["class_id"] == class_id
+                values = metrics_df.loc[mask, col]
+                metrics_df.loc[mask, pct_col] = values.rank(pct=True) * 100 if values.std() > 0 else 50.0
+    progress.progress(60, text="백분위 산출 완료...")
+
+    # graph_results 구성 (커뮤니티 탐지)
+    graph_results = {}
+    cat_path = OUTPUT_DIR / "type_categories.json"
+    type_categories = {}
+    if cat_path.exists():
+        with open(cat_path, "r", encoding="utf-8") as f:
+            type_categories = _json.load(f)
+
+    for class_id in sorted(metrics_df["class_id"].unique()):
+        class_students = metrics_df[metrics_df["class_id"] == class_id]["student_id"].tolist()
+        G = nx.Graph()
+
+        for sid in class_students:
+            ext = extractions.get(sid, {"entities": [], "relations": []})
+            for ent in ext.get("entities", []):
+                G.add_node(ent["id"], **{k: v for k, v in ent.items() if k != "id"})
+            for rel in ext.get("relations", []):
+                if G.has_node(rel.get("source")) and G.has_node(rel.get("target")):
+                    G.add_edge(rel["source"], rel["target"], type=rel.get("type", ""))
+
+        # 커뮤니티 탐지 (Louvain)
+        communities = {}
+        community_labels = {}
+        try:
+            import community as community_louvain
+            if len(G.nodes) > 0:
+                partition = community_louvain.best_partition(G, resolution=0.3, random_state=42)
+                for node, comm_id in partition.items():
+                    if comm_id not in communities:
+                        communities[comm_id] = []
+                    communities[comm_id].append(node)
+
+                # 범주 라벨
+                cats = type_categories.get(class_id, [])
+                for comm_id, nodes in communities.items():
+                    community_labels[comm_id] = f"커뮤니티 {comm_id}"
+        except:
+            pass
+
+        graph_results[class_id] = {
+            "graph": G,
+            "communities": communities,
+            "community_labels": community_labels,
+        }
+
+    progress.progress(80, text="그래프 구성 완료...")
     progress.progress(100, text="완료!")
-    return {"df": df, "extractions": extractions, "graph_results": graph_results, "metrics_df": metrics_df, "final_df": final_df}
+
+    return {"df": df, "extractions": extractions, "graph_results": graph_results, "metrics_df": metrics_df, "final_df": metrics_df}
 
 def render_overview_metrics(results):
     """메트릭 카드"""
