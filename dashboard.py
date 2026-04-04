@@ -37,12 +37,12 @@ METRIC_LABELS = {
 }
 METRIC_DESC = {
     "relation_entity_ratio": "요소 간 연결의 밀도 (높을수록 경험을 밀접하게 연결)",
-    "cross_ratio": "에필로그→활용 전이 비율 (높을수록 회고와 적용이 구조적으로 연결)",
+    "cross_ratio": "에필로그→활용 성찰-적용 연결 비율 (높을수록 성찰과 적용이 구조적으로 연결)",
     "connectivity": "경험의 통합도 (높을수록 경험이 하나의 서사로 통합)",
     "community_cross_ratio": "범주 간 통합적 사고 (높을수록 다양한 주제를 연결)",
 }
 
-st.set_page_config(page_title="PBL 학습경험 평가 프레임워크", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="PBL 학습경험 분석 프레임워크", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -60,7 +60,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.markdown("## 📊 GraphRAG PBL\n### 동적 평가 프레임워크")
+    st.markdown("## 📊 GraphRAG PBL\n### 학습경험 분석 프레임워크")
     st.markdown("---")
     page = st.radio("📌 메뉴", ["👤 개인별 보고서", "🏫 반별 보고서", "🎓 전공별 보고서"], label_visibility="collapsed")
     st.markdown("---")
@@ -233,8 +233,8 @@ def render_positioning_map(results):
         class_summaries.append({"cid": cid, "n": len(cd), "rer": rer_mean, "cr": cr_mean, "zero": cr_zero})
 
     summary_lines = []
-    summary_lines.append(f"전체 {len(metrics)}명 중 전이 부재 학생(교차 연결=0)은 **{total_zero}명**입니다.")
-    summary_lines.append(f"전이 연결이 가장 활발한 반은 **반 {best_transfer_class}** (평균 {best_transfer_val:.3f}), "
+    summary_lines.append(f"전체 {len(metrics)}명 중 성찰-적용 연결 부재 학생(교차 연결=0)은 **{total_zero}명**입니다.")
+    summary_lines.append(f"성찰-적용 연결이 가장 활발한 반은 **반 {best_transfer_class}** (평균 {best_transfer_val:.3f}), "
                         f"가장 낮은 반은 **반 {worst_transfer_class}** (평균 {worst_transfer_val:.3f})입니다.")
 
     # 반 간 밀도 비교
@@ -247,13 +247,13 @@ def render_positioning_map(results):
         summary_lines.append(f"구조적 밀도는 반 {high_rer['cid']}({high_rer['rer']:.3f})이 가장 높고, 반 {low_rer['cid']}({low_rer['rer']:.3f})이 가장 낮습니다.")
 
     if total_zero > 0:
-        summary_lines.append(f"⚠️ 전이 부재 학생 {total_zero}명에 대해 '학습 내용을 전공·일상에 어떻게 적용할 수 있는지' 성찰을 유도하는 수업 설계 보완이 필요합니다.")
+        summary_lines.append(f"⚠️ 성찰-적용 연결 부재 학생 {total_zero}명에 대해 '학습 내용을 전공·일상에 어떻게 적용할 수 있는지' 성찰을 유도하는 수업 설계 보완이 필요합니다.")
 
     st.markdown(
         f'<div style="background:linear-gradient(135deg,#EBF5FB,#D6EAF8);padding:14px 18px;border-radius:10px;margin-bottom:16px;font-size:.88rem;color:#1B4F72;border-left:4px solid #2E86C1">'
         f'<b>🕸️ 종합의견:</b> {_md_bold_to_html("  ".join(summary_lines))}</div>', unsafe_allow_html=True)
 
-    st.markdown('<div style="font-size:.82rem;color:#666;margin-bottom:8px">X축: 관계-엔티티 비율 (구조적 밀도) / Y축: 교차 연결 비율 (에필로그→활용 전이). 버블 크기는 엔티티 수.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:.82rem;color:#666;margin-bottom:8px">X축: 관계-엔티티 비율 (구조적 밀도) / Y축: 성찰-적용 연결 비율. 버블 크기는 엔티티 수.</div>', unsafe_allow_html=True)
 
     # 전체 84명 기준 축 범위 통일
     x_global_min = max(0, metrics["relation_entity_ratio"].min() - 0.05)
@@ -291,13 +291,13 @@ def render_positioning_map(results):
                 fig.add_vline(x=x_mid, line_dash="dot", line_color="#CCC", line_width=1)
 
                 # 사분면 라벨
-                fig.add_annotation(x=x_global_min + 0.01, y=y_global_max - 0.005, text="밀도↓ 전이↑",
+                fig.add_annotation(x=x_global_min + 0.01, y=y_global_max - 0.005, text="밀도↓ 연결↑",
                                   showarrow=False, font=dict(size=8, color="#888"), xanchor="left", yanchor="top")
-                fig.add_annotation(x=x_global_max - 0.01, y=y_global_max - 0.005, text="✦ 밀도↑ 전이↑",
+                fig.add_annotation(x=x_global_max - 0.01, y=y_global_max - 0.005, text="✦ 밀도↑ 연결↑",
                                   showarrow=False, font=dict(size=8, color="#1B5E20"), xanchor="right", yanchor="top")
-                fig.add_annotation(x=x_global_min + 0.01, y=y_global_min + 0.005, text="밀도↓ 전이↓",
+                fig.add_annotation(x=x_global_min + 0.01, y=y_global_min + 0.005, text="밀도↓ 연결↓",
                                   showarrow=False, font=dict(size=8, color="#BF360C"), xanchor="left", yanchor="bottom")
-                fig.add_annotation(x=x_global_max - 0.01, y=y_global_min + 0.005, text="밀도↑ 전이↓",
+                fig.add_annotation(x=x_global_max - 0.01, y=y_global_min + 0.005, text="밀도↑ 연결↓",
                                   showarrow=False, font=dict(size=8, color="#888"), xanchor="right", yanchor="bottom")
 
                 # 학생 점
@@ -326,7 +326,7 @@ def render_positioning_map(results):
                     title=dict(text=f"반 {cid} ({len(cdata)}명)", font=dict(size=14)),
                     xaxis=dict(title="← 구조적 밀도 (관계-엔티티 비율) →",
                               range=[x_global_min, x_global_max], tickformat=".2f", gridcolor="#F0F0F0"),
-                    yaxis=dict(title="← 전이 연결 (교차 연결 비율) →",
+                    yaxis=dict(title="← 성찰-적용 연결 비율 →",
                               range=[y_global_min, y_global_max], tickformat=".3f", gridcolor="#F0F0F0"),
                     plot_bgcolor='white',
                     margin=dict(l=60, r=20, t=40, b=60))
@@ -352,21 +352,21 @@ def render_positioning_map(results):
                 # 구체적 해석 생성
                 lines = []
                 lines.append(f"**반 {cid} 해석**")
-                lines.append(f"- 사분면 분포: ✦밀도↑전이↑ **{q1}명**, 밀도↓전이↑ {q2}명, 밀도↑전이↓ {q3}명, 밀도↓전이↓ {q4}명")
+                lines.append(f"- 사분면 분포: ✦밀도↑연결↑ **{q1}명**, 밀도↓연결↑ {q2}명, 밀도↑연결↓ {q3}명, 밀도↓연결↓ {q4}명")
 
                 if q1 > 0:
-                    lines.append(f"- 🟢 **우수 학생**: {', '.join(q1_names[:5])} — 성찰 구조와 전이 연결 모두 양호. 좋은 성찰 사례로 공유 가능.")
+                    lines.append(f"- 🟢 **우수 학생**: {', '.join(q1_names[:5])} — 성찰 구조와 성찰-적용 연결 모두 양호. 좋은 성찰 사례로 공유 가능.")
 
                 if cr_zero > 0:
-                    lines.append(f"- 🔴 **전이 부재**: {', '.join(zero_names)} ({cr_zero}명) — 에필로그→활용 연결이 없음. '배운 것을 전공에 어떻게 적용할 수 있을지' 추가 질문 필요.")
+                    lines.append(f"- 🔴 **성찰-적용 연결 부재**: {', '.join(zero_names)} ({cr_zero}명) — 에필로그→활용 연결이 없음. '배운 것을 전공에 어떻게 적용할 수 있을지' 추가 질문 필요.")
 
                 if q3 > 0:
-                    lines.append(f"- 🟡 **전이 보완 필요**: {', '.join(q3_names[:5])} — 성찰은 풍부하나 전공·일상 적용으로 연결되지 않음. 전이 구상을 유도하는 피드백 필요.")
+                    lines.append(f"- 🟡 **성찰-적용 연결 보완 필요**: {', '.join(q3_names[:5])} — 성찰은 풍부하나 전공·일상 적용으로 연결되지 않음. 적용 구상을 유도하는 피드백 필요.")
 
                 if cr_std > 0.10:
-                    lines.append(f"- ⚠️ 전이 편차가 큼 (SD={cr_std:.3f}). 학생 간 수준 차이가 크므로 개인별 맞춤 피드백이 효과적.")
+                    lines.append(f"- ⚠️ 성찰-적용 연결 편차가 큼 (SD={cr_std:.3f}). 학생 간 수준 차이가 크므로 개인별 맞춤 피드백이 효과적.")
                 else:
-                    lines.append(f"- 전이 수준이 비교적 균일 (SD={cr_std:.3f}).")
+                    lines.append(f"- 성찰-적용 연결 수준이 비교적 균일 (SD={cr_std:.3f}).")
 
                 st.markdown(
                     f'<div style="background:#F8F9FA;border-left:4px solid {color};padding:10px 14px;border-radius:0 8px 8px 0;margin:8px 0;font-size:.85rem;line-height:1.7">'
@@ -375,10 +375,10 @@ def render_positioning_map(results):
     # 사분면 해석 가이드
     st.markdown("""
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
-<div style="padding:10px;background:#E8F8F5;border-radius:8px;font-size:.85rem"><b>✦ 우상단: 구조적 밀도 높음 + 전이 활발</b><br>이상적 위치. 경험을 밀접히 연결하면서 전공·일상 적용도 구체적으로 구상.</div>
-<div style="padding:10px;background:#FEF9E7;border-radius:8px;font-size:.85rem"><b>좌상단: 구조적 밀도 낮음 + 전이 활발</b><br>전이는 관찰되나, 경험 요소 간 연결을 더 풍부하게 형성하면 성찰이 심화될 수 있음.</div>
-<div style="padding:10px;background:#FEF9E7;border-radius:8px;font-size:.85rem"><b>우하단: 구조적 밀도 높음 + 전이 부족</b><br>에필로그 내 연결은 잘 형성되나, 전공·일상 적용을 구체적으로 연결지어 볼 필요.</div>
-<div style="padding:10px;background:#FDEDEC;border-radius:8px;font-size:.85rem"><b>좌하단: 구조적 밀도 낮음 + 전이 부족</b><br>경험 간 연결 형성 + 전공·일상 적용 구체화 모두 필요. 개별 면담 권장.</div>
+<div style="padding:10px;background:#E8F8F5;border-radius:8px;font-size:.85rem"><b>✦ 우상단: 구조적 밀도 높음 + 성찰-적용 연결 활발</b><br>이상적 위치. 경험을 밀접히 연결하면서 전공·일상 적용도 구체적으로 구상.</div>
+<div style="padding:10px;background:#FEF9E7;border-radius:8px;font-size:.85rem"><b>좌상단: 구조적 밀도 낮음 + 성찰-적용 연결 활발</b><br>성찰-적용 연결은 관찰되나, 경험 요소 간 연결을 더 풍부하게 형성하면 성찰이 심화될 수 있음.</div>
+<div style="padding:10px;background:#FEF9E7;border-radius:8px;font-size:.85rem"><b>우하단: 구조적 밀도 높음 + 성찰-적용 연결 부족</b><br>에필로그 내 연결은 잘 형성되나, 전공·일상 적용을 구체적으로 연결지어 볼 필요.</div>
+<div style="padding:10px;background:#FDEDEC;border-radius:8px;font-size:.85rem"><b>좌하단: 구조적 밀도 낮음 + 성찰-적용 연결 부족</b><br>경험 간 연결 형성 + 전공·일상 적용 구체화 모두 필요. 개별 면담 권장.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -446,9 +446,9 @@ def render_category_compare(results):
                     transfer_cats = [c for c in all_cats if app_pct.get(c, 0) > epi_pct.get(c, 0) and app_pct.get(c, 0) >= 15]
 
                     interp = f"**반 {cid}**: 에필로그 '{top_epi[0]}'({top_epi[1]:.0f}%) 중심 성찰. "
-                    interp += f"활용 '{top_app[0]}'({top_app[1]:.0f}%) 중심 전이. "
+                    interp += f"활용 '{top_app[0]}'({top_app[1]:.0f}%) 중심 적용 구상. "
                     if transfer_cats:
-                        interp += f"전이 증가 범주: {', '.join(transfer_cats)}."
+                        interp += f"적용 구상 증가 범주: {', '.join(transfer_cats)}."
                     st.markdown(interp)
                 else:
                     st.info(f"반 {cid}: 상위 범주 정보 없음")
@@ -476,9 +476,9 @@ def render_class_network(results):
         '<div style="background:linear-gradient(135deg,#EBF5FB,#D6EAF8);padding:14px 18px;border-radius:10px;margin-bottom:16px;font-size:.88rem;color:#1B4F72;border-left:4px solid #2E86C1">'
         '<b>🕸️ 안내:</b> 각 반의 상위 범주를 노드로, 범주 간 연결을 엣지로 집약한 네트워크입니다. '
         '노드 크기는 해당 범주의 엔티티 수, 엣지 굵기는 범주 간 관계 수를 나타냅니다. '
-        '<span style="color:#E74C3C;font-weight:bold">빨간 엣지</span>는 에필로그→활용 교차 연결(전이 흐름), '
+        '<span style="color:#E74C3C;font-weight:bold">빨간 엣지</span>는 에필로그→활용 교차 연결(성찰-적용 연결 흐름), '
         '<span style="color:#AAA">회색 엣지</span>는 동일 출처 내 연결입니다. '
-        '엣지 라벨의 괄호 안 숫자는 전이 연결 수입니다.</div>', unsafe_allow_html=True)
+        '엣지 라벨의 괄호 안 숫자는 성찰-적용 연결 수입니다.</div>', unsafe_allow_html=True)
 
     # 반 선택
     cid = st.selectbox("반 선택", all_class_ids, key="class_network_select")
@@ -550,7 +550,7 @@ def render_class_network(results):
             fig.add_trace(go.Scatter(
                 x=[x0, x1, None], y=[y0, y1, None], mode='lines',
                 line=dict(width=min(cross * 2, 12), color='#E74C3C'),
-                hovertext=f"{c1} ↔ {c2}<br>전이 연결: {cross}건<br>전체: {total}건", hoverinfo='text',
+                hovertext=f"{c1} ↔ {c2}<br>성찰-적용 연결: {cross}건<br>전체: {total}건", hoverinfo='text',
                 showlegend=False))
         if total - cross > 0:
             fig.add_trace(go.Scatter(
@@ -605,7 +605,7 @@ def render_class_network(results):
     sorted_cats = sorted(cat_counts.items(), key=lambda x: -x[1])
     top_cat = sorted_cats[0] if sorted_cats else ("없음", 0)
 
-    # 전이 경로 정렬
+    # 성찰-적용 연결 경로 정렬
     cross_edges_sorted = sorted(cat_edges.items(), key=lambda x: -x[1]["cross"])
     top_cross_paths = [(k, v) for k, v in cross_edges_sorted if v["cross"] > 0]
 
@@ -629,12 +629,12 @@ def render_class_network(results):
 
     if total_cross > 0:
         cross_pct = total_cross / total_all * 100 if total_all > 0 else 0
-        interp_lines.append(f"**전이 흐름**: 범주 간 전체 연결 {total_all}건 중 {total_cross}건({cross_pct:.0f}%)이 에필로그→활용 전이 연결입니다.")
+        interp_lines.append(f"**성찰-적용 연결 흐름**: 범주 간 전체 연결 {total_all}건 중 {total_cross}건({cross_pct:.0f}%)이 에필로그→활용 성찰-적용 연결입니다.")
         if top_cross_paths:
             paths_text = ", ".join(f"'{k[0]}↔{k[1]}'({v['cross']}건)" for k, v in top_cross_paths[:3])
-            interp_lines.append(f"**주요 전이 경로**: {paths_text}. 이 경로들은 학습자들이 회고한 경험에서 적용 구상으로 가장 활발하게 연결되는 범주 조합입니다.")
+            interp_lines.append(f"**주요 성찰-적용 연결 경로**: {paths_text}. 이 경로들은 학습자들이 회고한 경험에서 적용 구상으로 가장 활발하게 연결되는 범주 조합입니다.")
     else:
-        interp_lines.append("**전이 흐름**: 범주 간 전이 연결이 관찰되지 않았습니다. 에필로그와 활용의 학습경험이 범주 수준에서 분리되어 있습니다.")
+        interp_lines.append("**성찰-적용 연결 흐름**: 범주 간 성찰-적용 연결이 관찰되지 않았습니다. 에필로그와 활용의 학습경험이 범주 수준에서 분리되어 있습니다.")
 
     if isolated_cats:
         interp_lines.append(f"**고립 범주**: {', '.join(isolated_cats)}는 다른 범주와 연결되지 않은 독립적 영역입니다. 이 범주의 학습경험이 다른 영역과 통합되지 않고 있음을 시사합니다.")
@@ -658,12 +658,12 @@ def render_class_network(results):
     interp_lines.append("**📋 수업 설계 시사점**:")
     if total_cross > 0 and top_cross_paths:
         best_path = top_cross_paths[0]
-        interp_lines.append(f"- 가장 활발한 전이 경로인 '{best_path[0][0]}↔{best_path[0][1]}'를 강화하는 활동을 설계하면 학습 전이를 촉진할 수 있습니다.")
+        interp_lines.append(f"- 가장 활발한 성찰-적용 연결 경로인 '{best_path[0][0]}↔{best_path[0][1]}'를 강화하는 활동을 설계하면 성찰-적용 연결을 촉진할 수 있습니다.")
     if isolated_cats:
         interp_lines.append(f"- 고립 범주({', '.join(isolated_cats)})를 다른 범주와 연결하는 성찰 프롬프트나 활동을 추가하면 통합적 학습이 촉진될 수 있습니다.")
     zero_transfer = len(cd[cd["cross_ratio"] == 0])
     if zero_transfer > 0:
-        interp_lines.append(f"- 이 반의 전이 부재 학생 {zero_transfer}명에 대해 '학습 내용을 전공·일상에 어떻게 적용할 수 있는지' 성찰을 유도하는 보완이 필요합니다.")
+        interp_lines.append(f"- 이 반의 성찰-적용 연결 부재 학생 {zero_transfer}명에 대해 '학습 내용을 전공·일상에 어떻게 적용할 수 있는지' 성찰을 유도하는 보완이 필요합니다.")
 
     st.markdown("\n\n".join(interp_lines))
 
@@ -711,7 +711,7 @@ def render_class_analysis(results):
 
     # ── 에필로그 학습경험 요소 (연구문제 1-1) ──
     st.markdown(f"### 에필로그(회고) 학습경험 요소")
-    st.caption("연구문제 1-1: 에필로그에 나타난 학습경험 요소의 유형과 분포 특성")
+    st.caption("연구문제 1-1: 에필로그에 나타난 학습경험 요소의 유형과 특성")
 
     epi_cat_sorted = sorted(epi_by_cat.keys(), key=lambda x: -len(epi_by_cat[x]))
     if epi_cat_sorted:
@@ -741,8 +741,8 @@ def render_class_analysis(results):
 
     # ── 활용 학습경험 요소 (연구문제 1-2) ──
     st.markdown("---")
-    st.markdown(f"### 활용(적용 구상) 학습 전이 요소")
-    st.caption("연구문제 1-2: 활용에 나타난 학습 전이의 유형과 특징")
+    st.markdown(f"### 활용(적용 구상) 학습경험 요소")
+    st.caption("연구문제 1-2: 활용에 나타난 학습경험 요소의 유형과 특성")
 
     app_cat_sorted = sorted(app_by_cat.keys(), key=lambda x: -len(app_by_cat[x]))
     if app_cat_sorted:
@@ -770,20 +770,20 @@ def render_class_analysis(results):
     else:
         st.info("활용 요소가 없습니다.")
 
-    # ── 전이 현황 (연구문제 1-3) ──
+    # ── 성찰-적용 연결 현황 (연구문제 1-3) ──
     st.markdown("---")
-    st.markdown(f"### 전이 현황")
+    st.markdown(f"### 성찰-적용 연결 현황")
     st.caption("연구문제 1-3: 에필로그와 활용 간의 의미적 관계 구조")
 
     total = len(class_data)
     with_transfer = len(class_data[class_data["cross_ratio"] > 0])
     without_transfer = total - with_transfer
-    st.markdown(f"- 전이 있음: **{with_transfer}명** ({with_transfer/total*100:.0f}%)")
-    st.markdown(f"- 전이 없음: **{without_transfer}명** ({without_transfer/total*100:.0f}%)")
+    st.markdown(f"- 성찰-적용 연결 있음: **{with_transfer}명** ({with_transfer/total*100:.0f}%)")
+    st.markdown(f"- 성찰-적용 연결 없음: **{without_transfer}명** ({without_transfer/total*100:.0f}%)")
 
     if without_transfer > 0:
         no_transfer_names = class_data[class_data["cross_ratio"] == 0]["student_id"].apply(lambda x: x.split("_")[-1]).tolist()
-        st.markdown(f"- ⚠️ 전이 부재 학생: {', '.join(no_transfer_names)}")
+        st.markdown(f"- ⚠️ 성찰-적용 연결 부재 학생: {', '.join(no_transfer_names)}")
 
 def render_student_gauge(row, results):
     """반 내 위치 게이지 (4개 핵심 지표)"""
@@ -796,7 +796,7 @@ def render_student_gauge(row, results):
 
     gauge_config = [
         {"value": rer_pct, "title": "성찰 구조", "color": "#1A3764", "desc": "경험 요소 간 연결 밀도"},
-        {"value": cr_pct, "title": "전이 연결", "color": "#E8913A", "desc": "회고→적용 교차"},
+        {"value": cr_pct, "title": "성찰-적용 연결", "color": "#E8913A", "desc": "회고→적용 교차"},
         {"value": conn_pct, "title": "그래프 응집", "color": "#2ECC71", "desc": "경험 요소의 연결 정도"},
         {"value": ccr_pct, "title": "범주 통합", "color": "#9B59B6", "desc": "서로 다른 범주 간 연결"},
     ]
@@ -820,16 +820,16 @@ def render_student_gauge(row, results):
     # 종합 진단
     above_50 = sum(1 for v in [rer_pct, cr_pct, conn_pct, ccr_pct] if v >= 50)
     if above_50 == 4:
-        st.success("4개 지표 모두 상위권입니다. 성찰 구조, 전이 연결, 응집도, 범주 통합이 모두 양호합니다.")
+        st.success("4개 지표 모두 상위권입니다. 성찰 구조, 성찰-적용 연결, 응집도, 범주 통합이 모두 양호합니다.")
     elif above_50 >= 2:
         weak = []
         if rer_pct < 50: weak.append("성찰 구조")
-        if cr_pct < 50: weak.append("전이 연결")
+        if cr_pct < 50: weak.append("성찰-적용 연결")
         if conn_pct < 50: weak.append("그래프 응집")
         if ccr_pct < 50: weak.append("범주 통합")
         st.warning(f"{', '.join(weak)} 영역의 보완이 필요합니다.")
     else:
-        st.error("대부분의 지표에서 보완이 필요합니다. 성찰의 구조화와 전이 연결을 강화하는 피드백이 필요합니다.")
+        st.error("대부분의 지표에서 보완이 필요합니다. 성찰의 구조화와 성찰-적용 연결을 강화하는 피드백이 필요합니다.")
 
     # 진단 코멘트
     metrics = results["metrics_df"]
@@ -837,13 +837,13 @@ def render_student_gauge(row, results):
     rer_med = class_data["relation_entity_ratio"].median()
     cr_med = class_data["cross_ratio"].median()
     if row["relation_entity_ratio"] >= rer_med and row["cross_ratio"] >= cr_med:
-        st.markdown("**포지션**: 구조적 밀도 높음 + 전이 활발. 학습경험을 밀접하게 연결하면서 전공·일상 적용도 구체적으로 구상하고 있습니다.")
+        st.markdown("**포지션**: 구조적 밀도 높음 + 성찰-적용 연결 활발. 학습경험을 밀접하게 연결하면서 전공·일상 적용도 구체적으로 구상하고 있습니다.")
     elif row["relation_entity_ratio"] < rer_med and row["cross_ratio"] >= cr_med:
-        st.markdown("**포지션**: 구조적 밀도 낮음 + 전이 활발. 경험 요소 간 연결을 더 풍부하게 형성하면 성찰이 심화될 수 있습니다.")
+        st.markdown("**포지션**: 구조적 밀도 낮음 + 성찰-적용 연결 활발. 경험 요소 간 연결을 더 풍부하게 형성하면 성찰이 심화될 수 있습니다.")
     elif row["relation_entity_ratio"] >= rer_med:
-        st.markdown("**포지션**: 구조적 밀도 높음 + 전이 부족. 배운 것을 전공이나 일상에 어떻게 적용할 수 있는지 구체적으로 연결지어 보면 좋겠습니다.")
+        st.markdown("**포지션**: 구조적 밀도 높음 + 성찰-적용 연결 부족. 배운 것을 전공이나 일상에 어떻게 적용할 수 있는지 구체적으로 연결지어 보면 좋겠습니다.")
     else:
-        st.markdown("**포지션**: 구조적 밀도 낮음 + 전이 부족. 경험 간 연결을 형성하고, 전공·일상 적용을 구체화해 보세요.")
+        st.markdown("**포지션**: 구조적 밀도 낮음 + 성찰-적용 연결 부족. 경험 간 연결을 형성하고, 전공·일상 적용을 구체화해 보세요.")
 
 def render_student_graph(student_id, ext, results):
     """학습경험 네트워크 그래프"""
@@ -890,9 +890,9 @@ def render_student_graph(student_id, ext, results):
 
         summary = f"총 {n_ent}개 엔티티와 {n_rel}개 관계가 추출되었으며, {hub_text}이(가) {hub_conn}개의 연결을 가진 핵심 허브 노드입니다. {density_text}"
         if n_cross > 0:
-            summary += f" 에필로그→활용 전이 경로가 {n_cross}개 형성되어, 학습 전이가 관찰됩니다."
+            summary += f" 에필로그→활용 성찰-적용 연결 경로가 {n_cross}개 형성되어, 성찰-적용 연결이 관찰됩니다."
         else:
-            summary += " 에필로그→활용 전이 경로가 형성되지 않았습니다."
+            summary += " 에필로그→활용 성찰-적용 연결 경로가 형성되지 않았습니다."
 
         # 종합의견 박스
         st.markdown(
@@ -902,7 +902,7 @@ def render_student_graph(student_id, ext, results):
         # ── 범례 태그 ──
         cat_colors = {
             "학습활동및과정": "#4A90D9", "학습성과및역량": "#2ECC71", "정의적변화": "#E74C3C",
-            "협력및사회적경험": "#9B59B6", "전공및일상전이": "#F39C12", "학습동기및목표": "#1ABC9C",
+            "협력및사회적경험": "#9B59B6", "전공및일상적용": "#F39C12", "학습동기및목표": "#1ABC9C",
         }
         # 이 학생의 실제 범주 수집
         all_cats = set()
@@ -1052,7 +1052,7 @@ def render_student_elements(student_id, row, ext, results):
             st.markdown(f'<div style="background:#FFF8F0;padding:12px;border-radius:8px;font-size:.9rem;line-height:1.7;border-left:3px solid #E8913A">{sr.get("application","")}</div>', unsafe_allow_html=True)
 
 def render_student_transfer(student_id, row, ext, results):
-    """전이 분석"""
+    """성찰-적용 연결 분석"""
     entities = ext.get("entities", []); relations = ext.get("relations", [])
     epi_ents = [e for e in entities if e.get("source", "").startswith("에필로그")]
     app_ents = [e for e in entities if e.get("source", "").startswith("활용")]
@@ -1060,7 +1060,7 @@ def render_student_transfer(student_id, row, ext, results):
     id_to_text = {e["id"]: e.get("text", "") for e in entities}
     cross_rels = [r for r in relations if (r["source"] in epi_ids and r["target"] in app_ids) or (r["source"] in app_ids and r["target"] in epi_ids)]
     if cross_rels:
-        st.markdown("### 에필로그 → 활용 전이 경로")
+        st.markdown("### 에필로그 → 활용 성찰-적용 연결 경로")
         for rel in cross_rels:
             st.markdown(f'<div class="transfer-path">"{id_to_text.get(rel["source"], "")}" →<b>({rel.get("type", "")})</b>→ "{id_to_text.get(rel["target"], "")}"</div>', unsafe_allow_html=True)
     else:
@@ -1072,13 +1072,13 @@ def render_student_transfer(student_id, row, ext, results):
     rer_med = class_data["relation_entity_ratio"].median()
     cr_med = class_data["cross_ratio"].median()
     if row["relation_entity_ratio"] >= rer_med and row["cross_ratio"] >= cr_med:
-        st.success("**포지션: 구조적 밀도 높음 + 전이 활발**\n\n학습경험을 밀접하게 연결하면서 전공·일상 적용도 구체적으로 구상하고 있습니다.")
+        st.success("**포지션: 구조적 밀도 높음 + 성찰-적용 연결 활발**\n\n학습경험을 밀접하게 연결하면서 전공·일상 적용도 구체적으로 구상하고 있습니다.")
     elif row["relation_entity_ratio"] < rer_med and row["cross_ratio"] >= cr_med:
-        st.info("**포지션: 구조적 밀도 낮음 + 전이 활발**\n\n경험 요소 간 연결을 더 풍부하게 형성하면 성찰이 심화될 수 있습니다.")
+        st.info("**포지션: 구조적 밀도 낮음 + 성찰-적용 연결 활발**\n\n경험 요소 간 연결을 더 풍부하게 형성하면 성찰이 심화될 수 있습니다.")
     elif row["relation_entity_ratio"] >= rer_med:
-        st.warning("**포지션: 구조적 밀도 높음 + 전이 부족**\n\n배운 것을 전공이나 일상에 어떻게 적용할 수 있는지 구체적으로 연결지어 보면 좋겠습니다.")
+        st.warning("**포지션: 구조적 밀도 높음 + 성찰-적용 연결 부족**\n\n배운 것을 전공이나 일상에 어떻게 적용할 수 있는지 구체적으로 연결지어 보면 좋겠습니다.")
     else:
-        st.error("**포지션: 구조적 밀도 낮음 + 전이 부족**\n\n경험 간 연결을 더 형성하고, 전공·일상 적용을 구체화해 보세요.")
+        st.error("**포지션: 구조적 밀도 낮음 + 성찰-적용 연결 부족**\n\n경험 간 연결을 더 형성하고, 전공·일상 적용을 구체화해 보세요.")
 
 def render_major_positioning_map(results):
     """전공별 포지셔닝 맵"""
@@ -1107,7 +1107,7 @@ def render_major_positioning_map(results):
         low = sorted_cr[-1] if sorted_cr else None
         summary = f"전공별 포지셔닝 맵입니다. "
         if high and low:
-            summary += f"전이 연결이 가장 활발한 전공은 {high['major']}({high['cr']:.3f}), 가장 낮은 전공은 {low['major']}({low['cr']:.3f})입니다."
+            summary += f"성찰-적용 연결이 가장 활발한 전공은 {high['major']}({high['cr']:.3f}), 가장 낮은 전공은 {low['major']}({low['cr']:.3f})입니다."
         st.markdown(
             f'<div style="background:linear-gradient(135deg,#FEF9E7,#FCF3CF);padding:14px 18px;border-radius:10px;margin-bottom:12px;font-size:.88rem;color:#7D6608;border-left:4px solid #F39C12">'
             f'<b>📝 종합의견:</b> {summary}</div>', unsafe_allow_html=True)
@@ -1141,7 +1141,7 @@ def render_major_positioning_map(results):
 
                 names = [r["student_id"].split("_")[-1] for _, r in mdata.iterrows()]
                 sizes = [max(20, r["n_entities"] * 3.5) for _, r in mdata.iterrows()]
-                hovers = [f"<b>{r['student_id'].split('_')[-1]}</b> ({r['class_id']}반)<br>밀도: {r['relation_entity_ratio']:.3f}<br>전이: {r['cross_ratio']:.3f}"
+                hovers = [f"<b>{r['student_id'].split('_')[-1]}</b> ({r['class_id']}반)<br>밀도: {r['relation_entity_ratio']:.3f}<br>성찰-적용 연결: {r['cross_ratio']:.3f}"
                          for _, r in mdata.iterrows()]
 
                 fig.add_trace(go.Scatter(
@@ -1155,7 +1155,7 @@ def render_major_positioning_map(results):
                     height=380, showlegend=False,
                     title=dict(text=f"{major} ({len(mdata)}명)", font=dict(size=13)),
                     xaxis=dict(title="← 구조적 밀도 →", range=[x_min, x_max], tickformat=".2f", gridcolor="#F0F0F0"),
-                    yaxis=dict(title="← 전이 연결 →", range=[y_min, y_max], tickformat=".3f", gridcolor="#F0F0F0"),
+                    yaxis=dict(title="← 성찰-적용 연결 비율 →", range=[y_min, y_max], tickformat=".3f", gridcolor="#F0F0F0"),
                     plot_bgcolor='white', margin=dict(l=60, r=20, t=40, b=60))
                 st.plotly_chart(fig, use_container_width=True, key=f"pm_major_{major}")
 
@@ -1192,7 +1192,7 @@ def render_major_analysis(results):
         top_app = app_cats.most_common(1)[0][0] if app_cats else "없음"
         major_stats.append({"major": major, "n": len(md), "cr": cr_mean, "rer": rer_mean, "zero": cr_zero, "top_epi": top_epi, "top_app": top_app})
 
-    # 전이가 높은/낮은 전공
+    # 성찰-적용 연결이 높은/낮은 전공
     if major_stats:
         sorted_by_cr = sorted(major_stats, key=lambda x: -x["cr"])
         high_majors = [s for s in sorted_by_cr if s["cr"] > 0.15 and s["n"] >= 2]
@@ -1202,12 +1202,12 @@ def render_major_analysis(results):
         summary_lines.append(f"총 {len(all_majors)}개 전공의 학생이 참여하였습니다.")
 
         if high_majors:
-            high_names = ", ".join(f"{s['major']}({s['n']}명, 전이 {s['cr']:.3f})" for s in high_majors[:3])
-            summary_lines.append(f"전이 연결이 활발한 전공: {high_names}.")
+            high_names = ", ".join(f"{s['major']}({s['n']}명, 연결 {s['cr']:.3f})" for s in high_majors[:3])
+            summary_lines.append(f"성찰-적용 연결이 활발한 전공: {high_names}.")
 
         if low_majors:
-            low_names = ", ".join(f"{s['major']}({s['n']}명, 전이 {s['cr']:.3f})" for s in low_majors[:3])
-            summary_lines.append(f"전이 연결이 낮은 전공: {low_names}.")
+            low_names = ", ".join(f"{s['major']}({s['n']}명, 연결 {s['cr']:.3f})" for s in low_majors[:3])
+            summary_lines.append(f"성찰-적용 연결이 낮은 전공: {low_names}.")
 
         # 전공별 성찰 초점 차이
         epi_focus = set(s["top_epi"] for s in major_stats if s["n"] >= 2)
@@ -1216,7 +1216,7 @@ def render_major_analysis(results):
 
         total_zero = sum(s["zero"] for s in major_stats)
         if total_zero > 0:
-            summary_lines.append(f"전이 부재 학생 {total_zero}명은 전공과 무관하게 분포하며, 전공 특성보다 개인 차이에 기인하는 것으로 보입니다.")
+            summary_lines.append(f"성찰-적용 연결 부재 학생 {total_zero}명은 전공과 무관하게 분포하며, 전공 특성보다 개인 차이에 기인하는 것으로 보입니다.")
 
         st.markdown(
             f'<div style="background:linear-gradient(135deg,#FEF9E7,#FCF3CF);padding:14px 18px;border-radius:10px;margin-bottom:16px;font-size:.88rem;color:#7D6608;border-left:4px solid #F39C12">'
@@ -1376,7 +1376,7 @@ if (df is None or len(df) == 0) and use_existing:
 
 if df is None or len(df) == 0:
     st.markdown("""<div style="background:linear-gradient(135deg,#1F4E79,#2E75B6);padding:30px 28px;border-radius:14px;margin-bottom:16px">
-        <h2 style="color:white;margin:0">📊 PBL 학습경험 동적 평가 프레임워크</h2>
+        <h2 style="color:white;margin:0">📊 PBL 학습경험 분석 프레임워크</h2>
         <p style="color:#B0D4F1;margin:4px 0 0">GraphRAG 기반 귀납적 평가</p>
     </div>""", unsafe_allow_html=True)
     st.info("👈 사이드바에서 데이터를 업로드하거나, `data/` 폴더에 파일을 배치한 후 새로고침하세요.")
@@ -1425,12 +1425,12 @@ if page == "👤 개인별 보고서":
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1: st.markdown(f'<div class="mc"><div class="v">{len(ext.get("entities",[]))} / {len(ext.get("relations",[]))}</div><div class="l">엔티티 / 관계</div></div>', unsafe_allow_html=True)
     with c2: st.markdown(f'<div class="mc" style="border-color:#1A3764"><div class="v">{rer_pct:.0f}%</div><div class="l">성찰 구조</div></div>', unsafe_allow_html=True)
-    with c3: st.markdown(f'<div class="mc" style="border-color:#E8913A"><div class="v">{cr_pct:.0f}%</div><div class="l">전이 연결</div></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="mc" style="border-color:#E8913A"><div class="v">{cr_pct:.0f}%</div><div class="l">성찰-적용 연결 연결</div></div>', unsafe_allow_html=True)
     with c4: st.markdown(f'<div class="mc" style="border-color:#2ECC71"><div class="v">{conn_pct:.0f}%</div><div class="l">그래프 응집</div></div>', unsafe_allow_html=True)
     with c5: st.markdown(f'<div class="mc" style="border-color:#9B59B6"><div class="v">{ccr_pct:.0f}%</div><div class="l">범주 통합</div></div>', unsafe_allow_html=True)
 
     # 탭
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 반 내 위치", "🕸️ 지식 그래프", "📝 학습경험 요소", "🔄 전이 분석"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 반 내 위치", "🕸️ 지식 그래프", "📝 학습경험 요소", "🔄 성찰-적용 연결"])
 
     with tab1:
         render_student_gauge(row, results)
@@ -1447,7 +1447,7 @@ if page == "👤 개인별 보고서":
 elif page == "🏫 반별 보고서":
     st.markdown(f"""<div style="background:linear-gradient(135deg,#1F4E79,#2E75B6);padding:20px 28px;border-radius:14px;margin-bottom:16px">
         <h2 style="color:white;margin:0">🏫 반별 학습경험 분석 보고서</h2>
-        <p style="color:#B0D4F1;margin:4px 0 0">{len(results['metrics_df'])}명 · {results['metrics_df']['class_id'].nunique()}개 반 · 반별 성찰 구조 및 전이 특성 비교</p>
+        <p style="color:#B0D4F1;margin:4px 0 0">{len(results['metrics_df'])}명 · {results['metrics_df']['class_id'].nunique()}개 반 · 반별 성찰 구조 및 성찰-적용 연결 특성 비교</p>
     </div>""", unsafe_allow_html=True)
 
     render_overview_metrics(results)
@@ -1468,7 +1468,7 @@ elif page == "🏫 반별 보고서":
 elif page == "🎓 전공별 보고서":
     st.markdown(f"""<div style="background:linear-gradient(135deg,#1F4E79,#2E75B6);padding:20px 28px;border-radius:14px;margin-bottom:16px">
         <h2 style="color:white;margin:0">🎓 전공별 학습경험 분석 보고서</h2>
-        <p style="color:#B0D4F1;margin:4px 0 0">{results['metrics_df']['major'].nunique()}개 전공 · 전공별 성찰 범주 및 전이 특성 비교</p>
+        <p style="color:#B0D4F1;margin:4px 0 0">{results['metrics_df']['major'].nunique()}개 전공 · 전공별 성찰 범주 및 성찰-적용 연결 특성 비교</p>
     </div>""", unsafe_allow_html=True)
 
     tab1, tab2, tab3 = st.tabs(["🗺️ 전공별 포지셔닝 맵", "📊 전공별 상위 범주 비교", "📥 다운로드"])
