@@ -846,178 +846,390 @@ def render_student_gauge(row, results):
         st.markdown("**포지션**: 구조적 밀도 낮음 + 성찰-적용 연결 부족. 경험 간 연결을 형성하고, 전공·일상 적용을 구체화해 보세요.")
 
 def render_student_graph(student_id, ext, results):
-    """학습경험 네트워크 그래프"""
-    entities = ext.get("entities", []); relations = ext.get("relations", [])
+    """학습경험 네트워크 그래프 — 학생 중심 계층 구조
+    레이아웃:
+      Level 0: 학생 노드 (중앙)
+      Level 1: 에필로그 허브(왼쪽), 활용 허브(오른쪽)
+      Level 2: 개별 경험요소 (방사형)
+    엣지:
+      - 학생↔허브, 허브↔엔티티: 연결 구조선
+      - 에필로그↔활용 교차 관계: 초록 점선 (전이 경로)
+      - 같은 섹션 내 엔티티 간 관계: 회색 실선
+    인터랙션: 노드 드래그, 마우스휠 줌, 호버 툴팁, 초기화/레이블 버튼
+    """
+    import json as _json
+    from collections import defaultdict as _Gdd
 
-    if entities:
-        import plotly.graph_objects as go
-        import random, math
-        from collections import Counter as _GCtr, defaultdict as _Gdd
+    entities = ext.get("entities", [])
+    relations = ext.get("relations", [])
 
-        epi_ids = {e["id"] for e in entities if e.get("source", "").startswith("에필로그")}
-        app_ids = {e["id"] for e in entities if e.get("source", "").startswith("활용")}
-
-        # ── 종합의견 생성 ──
-        n_ent = len(entities)
-        n_rel = len(relations)
-        cross_rels_list = [r for r in relations
-                          if (r["source"] in epi_ids and r["target"] in app_ids)
-                          or (r["source"] in app_ids and r["target"] in epi_ids)]
-        n_cross = len(cross_rels_list)
-
-        # 허브 노드 찾기
-        conn_count = _Gdd(int)
-        for r in relations:
-            conn_count[r["source"]] += 1
-            conn_count[r["target"]] += 1
-        hub_id = max(conn_count, key=conn_count.get) if conn_count else None
-        hub_node = next((e for e in entities if e["id"] == hub_id), None)
-        hub_text = f"'{hub_node.get('text','')}'({hub_node.get('type','')})" if hub_node else "없음"
-        hub_conn = conn_count.get(hub_id, 0)
-
-        # 밀도 판단
-        density = n_rel / (n_ent * (n_ent - 1)) if n_ent > 1 else 0
-        if density >= 0.25:
-            density_text = "그래프 밀도가 높아, 주요 경험 요소 간 연결이 형성되어 있습니다."
-        elif density >= 0.15:
-            density_text = "그래프 밀도가 적정 수준으로, 주요 경험 요소 간 연결이 형성되어 있습니다."
-        else:
-            density_text = "그래프 밀도가 낮아, 경험 요소 간 연결이 다소 분절적입니다."
-
-        # 정서 전환
-        epi_cat_list = [e.get("category", "") for e in entities if e.get("source", "").startswith("에필로그")]
-        app_cat_list = [e.get("category", "") for e in entities if e.get("source", "").startswith("활용")]
-
-        summary = f"총 {n_ent}개 엔티티와 {n_rel}개 관계가 추출되었으며, {hub_text}이(가) {hub_conn}개의 연결을 가진 핵심 허브 노드입니다. {density_text}"
-        if n_cross > 0:
-            summary += f" 에필로그→활용 성찰-적용 연결 경로가 {n_cross}개 형성되어, 성찰-적용 연결이 관찰됩니다."
-        else:
-            summary += " 에필로그→활용 성찰-적용 연결 경로가 형성되지 않았습니다."
-
-        # 종합의견 박스
-        st.markdown(
-            f'<div style="background:linear-gradient(135deg,#EBF5FB,#D6EAF8);padding:14px 18px;border-radius:10px;margin-bottom:12px;font-size:.88rem;color:#1B4F72;border-left:4px solid #2E86C1">'
-            f'<b>🕸️ 종합의견:</b> {summary}</div>', unsafe_allow_html=True)
-
-        # ── 범례 태그 ──
-        cat_colors = {
-            "학습활동및과정": "#4A90D9", "학습성과및역량": "#2ECC71", "정의적변화": "#E74C3C",
-            "협력및사회적경험": "#9B59B6", "전공및일상적용": "#F39C12", "학습동기및목표": "#1ABC9C",
-        }
-        # 이 학생의 실제 범주 수집
-        all_cats = set()
-        for e in entities:
-            all_cats.add(e.get("category", "기타"))
-
-        used_colors = {}
-        default_palette = ["#4A90D9", "#E74C3C", "#2ECC71", "#9B59B6", "#F39C12", "#1ABC9C", "#E67E22", "#3498DB"]
-        for i, cat in enumerate(sorted(all_cats)):
-            used_colors[cat] = cat_colors.get(cat, default_palette[i % len(default_palette)])
-
-        legend_html = " ".join(
-            f'<span style="display:inline-block;padding:5px 16px;border-radius:20px;font-weight:700;color:white;font-size:.9rem;background:{used_colors[c]};margin:2px">{c}</span>'
-            for c in sorted(all_cats) if c != "기타"
-        )
-        st.markdown(f"<div style='margin-bottom:10px'>{legend_html}</div>", unsafe_allow_html=True)
-
-        # ── Plotly 그래프 생성 ──
-        random.seed(42)
-
-        # 레이아웃: 에필로그를 왼쪽, 활용을 오른쪽에 배치 (간격 축소)
-        pos = {}
-        epi_ents = [e for e in entities if e.get("source", "").startswith("에필로그")]
-        app_ents = [e for e in entities if e.get("source", "").startswith("활용")]
-
-        for i, e in enumerate(epi_ents):
-            angle = (i / max(len(epi_ents), 1)) * math.pi + math.pi / 2
-            r = 1.0 + random.uniform(-0.2, 0.2)
-            pos[e["id"]] = (-1.0 + r * math.cos(angle), r * math.sin(angle))
-
-        for i, e in enumerate(app_ents):
-            angle = (i / max(len(app_ents), 1)) * math.pi - math.pi / 2
-            r = 1.0 + random.uniform(-0.2, 0.2)
-            pos[e["id"]] = (1.0 + r * math.cos(angle), r * math.sin(angle))
-
-        traces = []
-
-        # 엣지
-        for r in relations:
-            if r["source"] in pos and r["target"] in pos:
-                x0, y0 = pos[r["source"]]
-                x1, y1 = pos[r["target"]]
-                is_cross = (r["source"] in epi_ids and r["target"] in app_ids) or \
-                           (r["source"] in app_ids and r["target"] in epi_ids)
-                edge_color = "#E74C3C" if is_cross else "#CCC"
-                edge_width = 3 if is_cross else 1.5
-
-                traces.append(go.Scatter(
-                    x=[x0, x1, None], y=[y0, y1, None], mode='lines',
-                    line=dict(width=edge_width, color=edge_color),
-                    hoverinfo='skip', showlegend=False))
-
-                # 엣지 라벨
-                rel_type = r.get("type", "")
-                if rel_type:
-                    label_color = "#C0392B" if is_cross else "#999"
-                    traces.append(go.Scatter(
-                        x=[(x0 + x1) / 2], y=[(y0 + y1) / 2], mode='text',
-                        text=[rel_type], textfont=dict(size=10, color=label_color),
-                        showlegend=False, hoverinfo='skip'))
-
-        # 노드 (범주별)
-        for cat in sorted(all_cats):
-            cat_ents = [e for e in entities if e.get("category", "기타") == cat]
-            if not cat_ents:
-                continue
-            color = used_colors.get(cat, "#888")
-            xs = [pos[e["id"]][0] for e in cat_ents if e["id"] in pos]
-            ys = [pos[e["id"]][1] for e in cat_ents if e["id"] in pos]
-            valid_ents = [e for e in cat_ents if e["id"] in pos]
-
-            sizes = []
-            for e in valid_ents:
-                conn = sum(1 for r in relations if r["source"] == e["id"] or r["target"] == e["id"])
-                sizes.append(25 + conn * 8)
-
-            # 노드 라벨: 세부유형 (위) + 구체적 내용 (아래)
-            texts = []
-            for e in valid_ents:
-                etype = e.get("type", "")
-                etext = e.get("text", "")
-                if len(etext) > 18:
-                    etext = etext[:18] + "..."
-                texts.append(f"{etype}<br><sub>{etext}</sub>")
-
-            hover_texts = []
-            for e in valid_ents:
-                source_label = "에필로그" if e.get("source", "").startswith("에필로그") else "활용"
-                hover_texts.append(
-                    f"<b>{e.get('type', '')}</b><br>"
-                    f"범주: {cat}<br>"
-                    f"출처: {source_label}<br>"
-                    f"내용: {e.get('text', '')}")
-
-            traces.append(go.Scatter(
-                x=xs, y=ys, mode='markers+text',
-                marker=dict(size=sizes, color=color, line=dict(width=2, color='white')),
-                text=texts, textposition="top center",
-                textfont=dict(size=11, color='#333'),
-                hovertext=hover_texts, hoverinfo='text',
-                name=cat))
-
-        fig = go.Figure(data=traces)
-        fig.update_layout(
-            height=610, showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=10)),
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            margin=dict(l=10, r=10, t=50, b=10),
-            plot_bgcolor='rgba(0,0,0,0)')
-
-        st.plotly_chart(fig, use_container_width=True, key=f"graph_{student_id}")
-
-    else:
+    if not entities:
         st.info("추출된 엔티티가 없습니다.")
+        return
+
+    epi_ids = {e["id"] for e in entities if e.get("source", "").startswith("에필로그")}
+    app_ids = {e["id"] for e in entities if e.get("source", "").startswith("활용")}
+
+    # ── 종합의견 ──────────────────────────────────────────
+    n_ent = len(entities)
+    n_rel = len(relations)
+    conn_count = _Gdd(int)
+    for r in relations:
+        conn_count[r["source"]] += 1
+        conn_count[r["target"]] += 1
+    hub_id = max(conn_count, key=conn_count.get) if conn_count else None
+    hub_node = next((e for e in entities if e["id"] == hub_id), None)
+    hub_text = f"'{hub_node.get('text','')}'({hub_node.get('type','')})" if hub_node else "없음"
+    hub_conn = conn_count.get(hub_id, 0)
+    cross_rels_list = [r for r in relations
+                      if (r["source"] in epi_ids and r["target"] in app_ids)
+                      or (r["source"] in app_ids and r["target"] in epi_ids)]
+    n_cross = len(cross_rels_list)
+    density = n_rel / (n_ent * (n_ent - 1)) if n_ent > 1 else 0
+    density_text = (
+        "그래프 밀도가 높아, 주요 경험 요소 간 연결이 형성되어 있습니다." if density >= 0.25
+        else "그래프 밀도가 적정 수준으로, 주요 경험 요소 간 연결이 형성되어 있습니다." if density >= 0.15
+        else "그래프 밀도가 낮아, 경험 요소 간 연결이 다소 분절적입니다."
+    )
+    summary = (f"총 {n_ent}개 엔티티와 {n_rel}개 관계가 추출되었으며, "
+               f"{hub_text}이(가) {hub_conn}개의 연결을 가진 핵심 노드입니다. {density_text}")
+    summary += (f" 에필로그→활용 전이 경로가 {n_cross}개 형성되어 지식 전이가 관찰됩니다." if n_cross > 0
+                else " 에필로그→활용 전이 경로가 형성되지 않았습니다.")
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,#EBF5FB,#D6EAF8);padding:14px 18px;'
+        f'border-radius:10px;margin-bottom:12px;font-size:.88rem;color:#1B4F72;border-left:4px solid #2E86C1">'
+        f'<b>🕸️ 종합의견:</b> {summary}</div>', unsafe_allow_html=True)
+
+    # ── 범주 색상 팔레트 ──────────────────────────────────
+    PRESET = {
+        "학습활동및과정": "#4A90D9", "학습성과및역량": "#2ECC71", "정의적변화": "#E74C3C",
+        "협력및사회적경험": "#9B59B6", "전공및일상적용": "#F39C12", "학습동기및목표": "#1ABC9C",
+    }
+    PALETTE = ["#4A90D9","#2ECC71","#E74C3C","#9B59B6","#F39C12","#1ABC9C","#E67E22","#3498DB","#16A085","#8E44AD"]
+    all_cats_sorted = sorted({e.get("category","기타") for e in entities})
+    cat_color_map = {}
+    idx = 0
+    for c in all_cats_sorted:
+        cat_color_map[c] = PRESET.get(c, PALETTE[idx % len(PALETTE)])
+        if c not in PRESET:
+            idx += 1
+
+    # 범주 태그 범례
+    legend_html = " ".join(
+        f'<span style="display:inline-block;padding:4px 13px;border-radius:18px;'
+        f'font-weight:700;color:white;font-size:.82rem;background:{cat_color_map[c]};margin:2px">{c}</span>'
+        for c in all_cats_sorted if c != "기타"
+    )
+    if legend_html:
+        st.markdown(f"<div style='margin-bottom:8px'>{legend_html}</div>", unsafe_allow_html=True)
+
+    # ── 그래프 데이터 JSON 구성 ───────────────────────────
+    short_name = student_id.split("_")[-1] if "_" in student_id else student_id
+    row_data = results["metrics_df"][results["metrics_df"]["student_id"] == student_id]
+    major_str = row_data.iloc[0]["major"] if not row_data.empty else ""
+
+    graph_nodes = []
+    # 학생 중심 노드
+    graph_nodes.append({
+        "id": "__student__", "label": short_name, "sub": major_str,
+        "level": 0, "size": 36, "color": "#1F4E79", "tc": "#FFFFFF",
+        "source": "", "category": "", "fulltext": "", "title": ""
+    })
+    # 에필로그/활용 허브
+    graph_nodes.append({
+        "id": "__epi__", "label": "에필로그", "sub": f"{len(epi_ids)}개 요소",
+        "level": 1, "size": 24, "color": "#2E75B6", "tc": "#FFFFFF",
+        "source": "에필로그", "category": "", "fulltext": "", "title": ""
+    })
+    graph_nodes.append({
+        "id": "__app__", "label": "활용", "sub": f"{len(app_ids)}개 요소",
+        "level": 1, "size": 24, "color": "#C05A11", "tc": "#FFFFFF",
+        "source": "활용", "category": "", "fulltext": "", "title": ""
+    })
+    # 개별 엔티티 노드
+    for e in entities:
+        cat = e.get("category", "기타")
+        is_epi = e.get("source", "").startswith("에필로그")
+        graph_nodes.append({
+            "id": e["id"],
+            "label": e.get("text", ""),
+            "sub": e.get("type", ""),
+            "level": 2,
+            "size": 13 + min(conn_count.get(e["id"], 0) * 3, 12),
+            "color": cat_color_map.get(cat, "#888888"),
+            "tc": "#FFFFFF",
+            "source": "에필로그" if is_epi else "활용",
+            "category": cat,
+            "fulltext": e.get("text", ""),
+            "title": e.get("type", "")
+        })
+
+    graph_edges = []
+    # 학생 → 허브
+    graph_edges.append({"s":"__student__","t":"__epi__","color":"#90C4E8","w":2.5,"dashed":False,"cross":False,"label":""})
+    graph_edges.append({"s":"__student__","t":"__app__","color":"#F5B97A","w":2.5,"dashed":False,"cross":False,"label":""})
+    # 허브 → 엔티티
+    for e in entities:
+        is_epi = e.get("source", "").startswith("에필로그")
+        graph_edges.append({
+            "s": "__epi__" if is_epi else "__app__", "t": e["id"],
+            "color": "#B5D4F4" if is_epi else "#FCD9A0",
+            "w": 1.2, "dashed": False, "cross": False, "label": ""
+        })
+    # 엔티티 간 관계
+    for r in relations:
+        s, t = r.get("source", ""), r.get("target", "")
+        if not s or not t:
+            continue
+        is_cross = (s in epi_ids and t in app_ids) or (s in app_ids and t in epi_ids)
+        rlabel = r.get("type", "")
+        if len(rlabel) > 12:
+            rlabel = rlabel[:12] + "…"
+        graph_edges.append({
+            "s": s, "t": t,
+            "color": "#27AE60" if is_cross else "#B4B2A9",
+            "w": 2.2 if is_cross else 1.0,
+            "dashed": is_cross, "cross": is_cross, "label": rlabel
+        })
+
+    nodes_json = _json.dumps(graph_nodes, ensure_ascii=False)
+    edges_json = _json.dumps(graph_edges, ensure_ascii=False)
+
+    html_code = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#F4F8FC;font-family:'Noto Sans KR',sans-serif;overflow:hidden}}
+#wrap{{width:100%;height:660px;position:relative}}
+canvas{{width:100%;height:100%;display:block;cursor:default}}
+#tt{{position:absolute;pointer-events:none;background:rgba(20,50,90,0.94);color:#fff;
+  padding:9px 13px;border-radius:9px;font-size:12px;max-width:230px;line-height:1.6;
+  display:none;z-index:20;word-break:keep-all}}
+#ctrl{{position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:10}}
+#ctrl button{{background:rgba(255,255,255,0.92);border:1px solid #CBD5E0;border-radius:6px;
+  padding:4px 11px;font-size:11px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;color:#333}}
+#ctrl button:hover{{background:#EBF4FD}}
+#legend{{position:absolute;bottom:12px;left:12px;background:rgba(255,255,255,0.93);
+  border:1px solid #CBD5E0;border-radius:9px;padding:9px 13px;font-size:11px;
+  color:#444;line-height:2;max-width:240px}}
+.ld{{display:flex;align-items:center;gap:6px;margin:1px 0}}
+.lc{{width:11px;height:11px;border-radius:50%;flex-shrink:0}}
+.lx{{width:22px;height:0;border-top:2.5px dashed #27AE60;flex-shrink:0}}
+</style>
+</head><body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="tt"></div>
+  <div id="ctrl">
+    <button onclick="resetView()">초기화</button>
+    <button onclick="toggleLabels()" id="lbtn">레이블 OFF</button>
+  </div>
+  <div id="legend">
+    <div class="ld"><div class="lc" style="background:#1F4E79"></div><span>학생 중심 노드</span></div>
+    <div class="ld"><div class="lc" style="background:#2E75B6"></div><span>에필로그 허브 (성찰)</span></div>
+    <div class="ld"><div class="lc" style="background:#C05A11"></div><span>활용 허브 (적용)</span></div>
+    <div class="ld"><div class="lc" style="background:#aaa"></div><span>경험요소 (범주 색상)</span></div>
+    <div class="ld"><div class="lx"></div><span>전이 연결 (에필로그→활용)</span></div>
+  </div>
+</div>
+<script>
+const NODES={nodes_json};
+const EDGES={edges_json};
+const canvas=document.getElementById('cv');
+const wrap=document.getElementById('wrap');
+let W=wrap.offsetWidth||720,H=660;
+canvas.width=W;canvas.height=H;
+const ctx=canvas.getContext('2d');
+const CX=W/2,CY=H/2;
+let showLabels=true,scale=1,ox=0,oy=0;
+let dragging=null,lastMouse=null,animFrame=0;
+
+const nmap={{}};
+NODES.forEach(n=>nmap[n.id]=n);
+
+const R1=Math.min(W,H)*.20,R2=Math.min(W,H)*.41;
+
+const sn=nmap['__student__'];
+sn.x=CX;sn.y=CY;sn.vx=0;sn.vy=0;sn.fixed=true;
+const eh=nmap['__epi__'],ah=nmap['__app__'];
+eh.x=CX-R1*1.05;eh.y=CY-R1*.25;eh.vx=0;eh.vy=0;eh._tx=eh.x;eh._ty=eh.y;
+ah.x=CX+R1*1.05;ah.y=CY+R1*.25;ah.vx=0;ah.vy=0;ah._tx=ah.x;ah._ty=ah.y;
+
+const epiNodes=NODES.filter(n=>n.source==='에필로그'&&n.level===2);
+const appNodes=NODES.filter(n=>n.source==='활용'&&n.level===2);
+
+function arc(arr,cx,cy,r,a0,a1){{
+  arr.forEach((n,i)=>{{
+    const t=arr.length===1?.5:i/(arr.length-1);
+    const a=a0+t*(a1-a0);
+    n.x=cx+r*Math.cos(a)+(Math.random()-.5)*16;
+    n.y=cy+r*Math.sin(a)+(Math.random()-.5)*16;
+    n.vx=0;n.vy=0;
+  }});
+}}
+arc(epiNodes,CX,CY,R2,Math.PI*.72,Math.PI*1.82);
+arc(appNodes,CX,CY,R2,-Math.PI*.22,Math.PI*.72);
+
+function tick(){{
+  const a=.11,rep=2900,ls=.07,damp=.80;
+  for(let i=0;i<NODES.length;i++){{
+    const A=NODES[i];if(A.fixed)continue;
+    for(let j=i+1;j<NODES.length;j++){{
+      const B=NODES[j];
+      let dx=A.x-B.x,dy=A.y-B.y;
+      const d=Math.sqrt(dx*dx+dy*dy)||.1;
+      const f=rep/(d*d),fx=dx/d*f*a,fy=dy/d*f*a;
+      A.vx+=fx;A.vy+=fy;
+      if(!B.fixed){{B.vx-=fx;B.vy-=fy;}}
+    }}
+  }}
+  EDGES.forEach(e=>{{
+    const s=nmap[e.s],t=nmap[e.t];if(!s||!t)return;
+    const dx=t.x-s.x,dy=t.y-s.y,d=Math.sqrt(dx*dx+dy*dy)||.1;
+    const tl=(e.s==='__student__'||e.t==='__student__')?R1*1.05:
+             (e.s==='__epi__'||e.t==='__epi__'||e.s==='__app__'||e.t==='__app__')?R2*.88:
+             (e.cross?R2*.55:R2*.44);
+    const f=(d-tl)*ls*a,fx=dx/d*f,fy=dy/d*f;
+    if(!s.fixed){{s.vx+=fx;s.vy+=fy;}}
+    if(!t.fixed){{t.vx-=fx;t.vy-=fy;}}
+  }});
+  [eh,ah].forEach(h=>{{h.vx-=(h.x-h._tx)*.035*a;h.vy-=(h.y-h._ty)*.035*a;}});
+  NODES.forEach(n=>{{if(n.fixed)return;n.vx*=damp;n.vy*=damp;n.x+=n.vx;n.y+=n.vy;}});
+}}
+
+function ws(x,y){{return[(x-CX)*scale+CX+ox,(y-CY)*scale+CY+oy];}}
+function trunc(s,n){{return s&&s.length>n?s.slice(0,n)+'…':s||'';}}
+function wrapL(text,maxW){{
+  if(!text)return[];
+  if(ctx.measureText(text).width<=maxW)return[text];
+  let line='',lines=[];
+  for(const ch of text){{const test=line+ch;if(ctx.measureText(test).width>maxW&&line){{lines.push(line);line=ch;}}else line=test;}}
+  if(line)lines.push(line);
+  return lines.slice(0,3);
+}}
+
+function drawNode(n){{
+  const[nx,ny]=ws(n.x,n.y),r=n.size*scale;
+  ctx.save();
+  if(n.level===0){{ctx.shadowColor='rgba(31,78,121,.45)';ctx.shadowBlur=16*scale;}}
+  ctx.beginPath();
+  if(n.level===1){{ctx.roundRect(nx-r*1.4,ny-r*.85,r*2.8,r*1.7,8);}}
+  else ctx.arc(nx,ny,r,0,Math.PI*2);
+  ctx.fillStyle=n.color;ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.65)';ctx.lineWidth=n.level===0?2.5:1.5;ctx.stroke();
+  ctx.restore();
+  if(!showLabels)return;
+  if(n.level===0){{
+    const fs=Math.max(11,13*scale);
+    ctx.font=`700 ${{fs}}px 'Noto Sans KR',sans-serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#FFFFFF';
+    ctx.fillText(trunc(n.label,10),nx,ny-(n.sub?fs*.55:0));
+    if(n.sub){{ctx.font=`400 ${{Math.max(9,10*scale)}}px 'Noto Sans KR',sans-serif`;ctx.fillStyle='rgba(255,255,255,.8)';ctx.fillText(trunc(n.sub,14),nx,ny+fs*.62);}}
+  }}else if(n.level===1){{
+    const fs=Math.max(9,10*scale);
+    ctx.font=`700 ${{fs}}px 'Noto Sans KR',sans-serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#FFFFFF';
+    ctx.fillText(n.label,nx,ny-(n.sub?fs*.5:0));
+    if(n.sub){{ctx.font=`400 ${{Math.max(8,9*scale)}}px 'Noto Sans KR',sans-serif`;ctx.fillStyle='rgba(255,255,255,.8)';ctx.fillText(n.sub,nx,ny+fs*.7);}}
+  }}else{{
+    const fs=Math.max(7,8.5*scale),maxW=Math.max(52,r*5.8);
+    ctx.font=`400 ${{fs}}px 'Noto Sans KR',sans-serif`;
+    const lines=wrapL(n.label,maxW),lh=fs*1.22;
+    ctx.fillStyle='#1A2733';ctx.textAlign='center';ctx.textBaseline='top';
+    lines.forEach((l,i)=>ctx.fillText(l,nx,ny+r+2+i*lh));
+    if(n.sub){{
+      ctx.font=`400 ${{Math.max(6,7*scale)}}px 'Noto Sans KR',sans-serif`;
+      ctx.fillStyle=n.source==='에필로그'?'#185FA5':'#7C3A0A';
+      ctx.fillText(trunc(n.sub,10),nx,ny+r+2+lines.length*lh+1);
+    }}
+  }}
+}}
+
+function draw(){{
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#F4F8FC';ctx.fillRect(0,0,W,H);
+  // 배경 구역 힌트
+  const[ex,ey]=ws(eh.x,eh.y),[ax,ay]=ws(ah.x,ah.y);
+  ctx.save();ctx.globalAlpha=.04;
+  ctx.fillStyle='#2E75B6';ctx.beginPath();ctx.arc(ex,ey,R2*.72*scale,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#C05A11';ctx.beginPath();ctx.arc(ax,ay,R2*.72*scale,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=1;ctx.restore();
+  // 엣지
+  EDGES.forEach(e=>{{
+    const s=nmap[e.s],t=nmap[e.t];if(!s||!t)return;
+    const[sx,sy]=ws(s.x,s.y),[tx,ty]=ws(t.x,t.y);
+    ctx.save();
+    ctx.strokeStyle=e.color;ctx.lineWidth=e.w*scale;
+    ctx.globalAlpha=e.cross?.88:.55;
+    if(e.dashed)ctx.setLineDash([6*scale,4*scale]);else ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(tx,ty);ctx.stroke();
+    if(e.dashed){{
+      const ang=Math.atan2(ty-sy,tx-sx),al=9*scale;
+      ctx.globalAlpha=1;ctx.fillStyle=e.color;ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(tx,ty);
+      ctx.lineTo(tx-al*Math.cos(ang-.42),ty-al*Math.sin(ang-.42));
+      ctx.lineTo(tx-al*Math.cos(ang+.42),ty-al*Math.sin(ang+.42));
+      ctx.closePath();ctx.fill();
+    }}
+    ctx.restore();
+    if(showLabels&&e.cross&&e.label){{
+      const mx=(sx+tx)/2,my=(sy+ty)/2;
+      ctx.save();ctx.font=`400 ${{Math.max(8,9*scale)}}px 'Noto Sans KR',sans-serif`;
+      ctx.fillStyle='#1B5E20';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(e.label,mx,my-8*scale);ctx.restore();
+    }}
+  }});
+  // 노드 (레벨 역순)
+  NODES.filter(n=>n.level===2).forEach(drawNode);
+  NODES.filter(n=>n.level===1).forEach(drawNode);
+  NODES.filter(n=>n.level===0).forEach(drawNode);
+}}
+
+function loop(){{if(animFrame<260){{tick();animFrame++;}}draw();requestAnimationFrame(loop);}}
+loop();
+
+function hitNode(mx,my){{
+  for(const n of[...NODES].reverse()){{
+    const[nx,ny]=ws(n.x,n.y),r=Math.max(n.size*scale*1.5,18);
+    if((mx-nx)**2+(my-ny)**2<r*r)return n;
+  }}
+  return null;
+}}
+
+const tt=document.getElementById('tt');
+canvas.addEventListener('mousemove',e=>{{
+  const rc=canvas.getBoundingClientRect(),mx=e.clientX-rc.left,my=e.clientY-rc.top;
+  const h=hitNode(mx,my);
+  if(h&&h.level===2){{
+    tt.style.display='block';
+    tt.style.left=(mx+14)+'px';tt.style.top=(my-8)+'px';
+    tt.innerHTML=`<b>${{h.fulltext||h.label}}</b><br>유형: ${{h.sub||'—'}}<br>범주: ${{h.category||'—'}}<br>출처: ${{h.source==='에필로그'?'📘 에필로그':'📙 활용'}}`;
+  }}else tt.style.display='none';
+  if(dragging){{dragging.x+=(mx-lastMouse.x)/scale;dragging.y+=(my-lastMouse.y)/scale;dragging.vx=0;dragging.vy=0;lastMouse={{x:mx,y:my}};animFrame=0;}}
+}});
+canvas.addEventListener('mouseleave',()=>tt.style.display='none');
+canvas.addEventListener('mousedown',e=>{{
+  const rc=canvas.getBoundingClientRect(),h=hitNode(e.clientX-rc.left,e.clientY-rc.top);
+  if(h){{dragging=h;lastMouse={{x:e.clientX-rc.left,y:e.clientY-rc.top}};animFrame=0;}}
+}});
+canvas.addEventListener('mouseup',()=>dragging=null);
+canvas.addEventListener('wheel',e=>{{
+  e.preventDefault();scale=Math.max(.3,Math.min(3.2,scale*(e.deltaY>0?.9:1.11)));animFrame=0;
+}},{{passive:false}});
+function resetView(){{
+  scale=1;ox=0;oy=0;sn.x=CX;sn.y=CY;
+  eh.x=eh._tx;eh.y=eh._ty;ah.x=ah._tx;ah.y=ah._ty;
+  arc(epiNodes,CX,CY,R2,Math.PI*.72,Math.PI*1.82);
+  arc(appNodes,CX,CY,R2,-Math.PI*.22,Math.PI*.72);
+  animFrame=0;
+}}
+function toggleLabels(){{showLabels=!showLabels;document.getElementById('lbtn').textContent=showLabels?'레이블 OFF':'레이블 ON';}}
+canvas.addEventListener('touchstart',e=>{{const t=e.touches[0],rc=canvas.getBoundingClientRect(),h=hitNode(t.clientX-rc.left,t.clientY-rc.top);if(h){{dragging=h;lastMouse={{x:t.clientX-rc.left,y:t.clientY-rc.top}};}}}},{{passive:true}});
+canvas.addEventListener('touchmove',e=>{{if(!dragging)return;const t=e.touches[0],rc=canvas.getBoundingClientRect(),mx=t.clientX-rc.left,my=t.clientY-rc.top;dragging.x+=(mx-lastMouse.x)/scale;dragging.y+=(my-lastMouse.y)/scale;dragging.vx=0;dragging.vy=0;lastMouse={{x:mx,y:my}};animFrame=0;}},{{passive:true}});
+canvas.addEventListener('touchend',()=>dragging=null);
+</script>
+</body></html>"""
+
+    st.components.v1.html(html_code, height=670, scrolling=False)
 
 def render_student_elements(student_id, row, ext, results):
     """추출된 학습경험 요소 + 원문"""
